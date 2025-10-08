@@ -66,13 +66,9 @@ void RealtimeRubberBand::setPitch(double pitch) {
     throw std::range_error("Pitch has to be greater than 0");
   }
   if (stretcher_->getPitchScale() != pitch) {
-    fetchProcessed();
-    stretcher_->reset();
-    if (max_process_size_ > 0) {
-      stretcher_->setMaxProcessSize(max_process_size_);
-    }
+    // NOTE: No reset() - RubberBand handles pitch changes on-the-fly
+    // reset() was causing audible pops/discontinuities when pitch changed
     stretcher_->setPitchScale(pitch);
-    updateRatio();
   }
 }
 
