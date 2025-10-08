@@ -3,9 +3,9 @@ import * as createModule from '../../wasm/build/rubberband'
 import { RubberBandModule } from './RubberBandModule'
 
 // Inline logger for worklet context (can't import from src/utils)
-// In production builds, these become no-ops
-declare const process: any
-const isDev = typeof process !== 'undefined' && process.env && process.env.DEV
+// Webpack's DefinePlugin will replace NODE_ENV at build time
+// @ts-ignore - NODE_ENV is defined by webpack at build time
+const isDev = typeof NODE_ENV === 'undefined' || NODE_ENV !== 'production'
 const noop = () => {}
 const logger = {
   log: isDev ? console.log.bind(console) : noop,

@@ -1,4 +1,5 @@
 const path = require('path');
+const webpack = require('webpack');
 
 const worklets = [
     'src/worklet/realtime-pitch-shift-processor.ts',
@@ -12,6 +13,11 @@ const bundle = (worklet) => {
     return {
         entry: path.resolve(__dirname, worklet),
         context: path.resolve(__dirname, "."),
+        plugins: [
+            new webpack.DefinePlugin({
+                'NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+            })
+        ],
         module: {
             rules: [
                 {
