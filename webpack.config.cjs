@@ -21,7 +21,7 @@ const bundle = (worklet) => {
                 },
                 {
                     test: /\.(wasm)$/i,
-                    type: "asset/inline",
+                    type: "asset/inline"
                 }
             ],
         },

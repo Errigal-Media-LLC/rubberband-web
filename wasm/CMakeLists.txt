@@ -72,7 +72,10 @@ set_target_properties(rubberband
         -s FILESYSTEM=0 \
         -s ASSERTIONS=0 \
         -s MODULARIZE=1 \
-        -s SINGLE_FILE=1"
+        -s SINGLE_FILE=1 \
+        -s EXPORT_NAME=createModule \
+        -s EXPORTED_FUNCTIONS=['_malloc','_free'] \
+        -s EXPORTED_RUNTIME_METHODS=['HEAPF32']"
         )
 
 # Just some demo testing

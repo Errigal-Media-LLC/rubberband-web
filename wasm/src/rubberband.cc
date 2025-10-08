@@ -25,6 +25,9 @@ EMSCRIPTEN_BINDINGS(CLASS_RealtimeRubberBand) {
         .function("setFormantScale",
                   &RealtimeRubberBand::setFormantScale)
 
+        .function("setMaxProcessSize",
+                  &RealtimeRubberBand::setMaxProcessSize)
+
         .function("push",
                   &RealtimeRubberBand::push,
                   allow_raw_pointers())

@@ -43,8 +43,9 @@ class OfflinePitchShiftProcessor extends AudioWorkletProcessor implements AudioW
       }
     }
     createModule()
-      .then((module: RubberBandModule) => {
-        this.api = new OfflineRubberBand(module)
+      .then((module) => {
+        const rbModule = module as RubberBandModule
+        this.api = new OfflineRubberBand(rbModule)
         if (this.pitch !== 1) {
           this.api.setPitchScale(this.pitch)
         }

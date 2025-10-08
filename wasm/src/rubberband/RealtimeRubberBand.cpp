@@ -16,7 +16,8 @@ const RubberBand::RubberBandStretcher::Options kHighQuality = RubberBand::Rubber
 RealtimeRubberBand::RealtimeRubberBand(size_t sampleRate, size_t channel_count, bool high_quality) :
     start_pad_samples_(0),
     start_delay_samples_(0),
-    channel_count_(channel_count) {
+    channel_count_(channel_count),
+    max_process_size_(0) {
   if (sampleRate <= 0) {
     throw std::range_error("Sample rate has to be greater than 0");
   }
@@ -52,6 +53,9 @@ void RealtimeRubberBand::setTempo(double tempo) {
   if (stretcher_->getTimeRatio() != tempo) {
     fetchProcessed();
     stretcher_->reset();
+    if (max_process_size_ > 0) {
+      stretcher_->setMaxProcessSize(max_process_size_);
+    }
     stretcher_->setTimeRatio(tempo);
     updateRatio();
   }
@@ -64,6 +68,9 @@ void RealtimeRubberBand::setPitch(double pitch) {
   if (stretcher_->getPitchScale() != pitch) {
     fetchProcessed();
     stretcher_->reset();
+    if (max_process_size_ > 0) {
+      stretcher_->setMaxProcessSize(max_process_size_);
+    }
     stretcher_->setPitchScale(pitch);
     updateRatio();
   }
@@ -76,9 +83,17 @@ void RealtimeRubberBand::setFormantScale(double scale) {
   if (stretcher_->getFormantScale() != scale) {
     fetchProcessed();
     stretcher_->reset();
+    if (max_process_size_ > 0) {
+      stretcher_->setMaxProcessSize(max_process_size_);
+    }
     stretcher_->setFormantScale(scale);
     updateRatio();
   }
+}
+
+void RealtimeRubberBand::setMaxProcessSize(size_t size) {
+  max_process_size_ = size;
+  stretcher_->setMaxProcessSize(size);
 }
 
 __attribute__((unused)) size_t RealtimeRubberBand::getSamplesAvailable() {
@@ -89,17 +104,9 @@ void RealtimeRubberBand::push(uintptr_t input_ptr, size_t sample_size) {
   auto *input = reinterpret_cast<float *>(input_ptr); // NOLINT(performance-no-int-to-ptr)
   auto **arr_to_process = new float *[channel_count_];
 
-  if (start_pad_samples_ > 0) {
-    // Fill with start pad samples first
-    auto **empty = new float *[channel_count_];
-    for (size_t channel = 0; channel < channel_count_; ++channel) {
-      empty[channel] = new float[start_pad_samples_];
-      memset(empty[channel], 0, start_pad_samples_);
-    }
-    stretcher_->process(empty, sample_size, false);
-    delete[] empty;
-    start_pad_samples_ = 0;
-  }
+  // NOTE: Start padding disabled for fixed-size processing
+  // When using setMaxProcessSize(), ALL calls to process() must use the same size
+  // Start padding would send variable-sized blocks, violating this contract
 
   for (size_t channel = 0; channel < channel_count_; ++channel) {
     float *source = input + channel * sample_size;

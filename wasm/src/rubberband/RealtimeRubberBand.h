@@ -21,6 +21,8 @@ class RealtimeRubberBand {
 
   void setFormantScale(double scale);
 
+  void setMaxProcessSize(size_t size);
+
   __attribute__((unused)) size_t getSamplesAvailable();
 
   void push(uintptr_t input_ptr, size_t sample_size);
@@ -41,6 +43,8 @@ class RealtimeRubberBand {
 
   size_t channel_count_;
   float **scratch_;
+
+  size_t max_process_size_;
 
   const size_t kBlockSize_ = 1024;
   const size_t kReserve_ = 8192;

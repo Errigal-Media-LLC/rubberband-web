@@ -43,6 +43,8 @@ export interface RealtimeRubberBand {
 
   setFormantScale(scale: number): void
 
+  setMaxProcessSize(size: number): void
+
   push(heapAddress: number, size: number): number
 
   pull(heapAddress: number, size: number): void
@@ -72,4 +74,5 @@ export interface RubberBandModule extends EmscriptenModule {
   RubberBandProcessor: RubberBandProcessor
   RubberBandFinal: RubberBandFinal
   Test: Test
+  ready: Promise<RubberBandModule>
 }

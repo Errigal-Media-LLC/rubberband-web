@@ -28,10 +28,15 @@ class RealtimeRubberBand implements RealtimePitchShift {
     this._highQuality = options?.highQuality || false
     this._channelCount = channelCount
     this._kernel = new module.RealtimeRubberBand(sampleRate, this._channelCount, this._highQuality)
+    this._kernel.setMaxProcessSize(RENDER_QUANTUM_FRAMES)
     this._inputArray = new HeapArray(module, RENDER_QUANTUM_FRAMES, channelCount)
     this._outputArray = new HeapArray(module, RENDER_QUANTUM_FRAMES, channelCount)
     this._pitch = options?.pitch || 1
     this._tempo = options?.tempo || 1
+    // Set initial tempo (inverted for RubberBand)
+    if (options?.tempo && options.tempo !== 1) {
+      this._kernel.setTempo(1 / options.tempo)
+    }
   }
 
   get timeRatio(): number {
@@ -39,8 +44,11 @@ class RealtimeRubberBand implements RealtimePitchShift {
   }
 
   set timeRatio(timeRatio: number) {
+    // RubberBand's timeRatio is the inverse of playback speed:
+    // - playbackSpeed 1.25 (faster) → timeRatio 0.8 (compress to 80% duration)
+    // - playbackSpeed 0.8 (slower) → timeRatio 1.25 (stretch to 125% duration)
     this._tempo = timeRatio
-    this._kernel.setTempo(this._tempo)
+    this._kernel.setTempo(1 / timeRatio)
   }
 
   public set pitchScale(pitch: number) {
@@ -80,12 +88,16 @@ class RealtimeRubberBand implements RealtimePitchShift {
     const channelCount = channels.length
     if (channelCount > 0) {
       const available = this._kernel.getSamplesAvailable()
-      if (available >= RENDER_QUANTUM_FRAMES) {
-        this._kernel.pull(this._outputArray.getHeapAddress(), RENDER_QUANTUM_FRAMES)
+      const outputLength = channels[0].length
+      const toPull = Math.min(available, outputLength)
+      if (toPull > 0) {
+        this._kernel.pull(this._outputArray.getHeapAddress(), toPull)
         for (let channel = 0; channel < channels.length; ++channel) {
-          channels[channel].set(this._outputArray.getChannelArray(channel))
+          channels[channel].set(this._outputArray.getChannelArray(channel).subarray(0, toPull))
         }
       }
+      // No zero-fill fallback - proper priming should ensure we always have samples available
+      // If underrun occurs, it indicates insufficient priming or incorrect buffer management
     }
     return channels
   }
