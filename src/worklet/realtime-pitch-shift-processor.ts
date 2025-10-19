@@ -180,17 +180,12 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
   ): boolean {
     const numChannels = inputs[0]?.length || outputs[0]?.length
 
-    // Read AudioParams (k-rate)
-    const pitchScale = parameters.pitchScale?.[0] ?? this.pitch
-    const tempo = parameters.tempo?.[0] ?? this.tempo
-
-    if (pitchScale !== this.pitch) {
-      this.pitch = pitchScale
-      if (this._api) this._api.pitchScale = pitchScale
-    }
-    if (tempo !== this.tempo) {
-      this.tempo = tempo
-      if (this._api) this._api.timeRatio = tempo
+    // Use port-updated fields as the single source of truth
+    const pitchScale = this.pitch
+    const tempo = this.tempo
+    if (this._api) {
+      this._api.pitchScale = pitchScale
+      this._api.timeRatio = tempo
     }
 
     if (numChannels > 0) {
