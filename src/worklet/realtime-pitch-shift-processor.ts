@@ -22,6 +22,26 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
   private tempo: number = 1
   private highQuality: boolean = false
 
+  // AudioParam descriptors for sample-accurate automation
+  static get parameterDescriptors() {
+    return [
+      {
+        name: 'pitchScale',
+        defaultValue: 1.0,
+        minValue: 0.5,
+        maxValue: 2.0,
+        automationRate: 'k-rate' // Control rate (per 128-sample block)
+      },
+      {
+        name: 'tempo',
+        defaultValue: 1.0,
+        minValue: 0.5,
+        maxValue: 2.0,
+        automationRate: 'k-rate'
+      }
+    ]
+  }
+
   constructor() {
     super()
     this.port.onmessage = (e) => {
@@ -132,6 +152,15 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
           tempo: this.tempo
         })
         logger.info(`RubberBand engine version ${this._api.version}`)
+
+        // Emit processorReady event so main thread can re-apply current audio parameters
+        // This is critical after seek operations that trigger processor recreation
+        this.port.postMessage(JSON.stringify(['processorReady', {
+          pitch: this.pitch,
+          tempo: this.tempo,
+          timestamp: currentTime
+        }]))
+        logger.info('[RubberBand] 📢 Emitted processorReady event')
       }
     } else {
       logger.warn('[RubberBand WASM] Module not yet loaded, skipping audio processing')
@@ -144,21 +173,40 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
     this.running = false
   }
 
-  process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>
+  ): boolean {
     const numChannels = inputs[0]?.length || outputs[0]?.length
+
+    // Read AudioParams (k-rate)
+    const pitchScale = parameters.pitchScale?.[0] ?? this.pitch
+    const tempo = parameters.tempo?.[0] ?? this.tempo
+
+    if (pitchScale !== this.pitch) {
+      this.pitch = pitchScale
+      if (this._api) this._api.pitchScale = pitchScale
+    }
+    if (tempo !== this.tempo) {
+      this.tempo = tempo
+      if (this._api) this._api.timeRatio = tempo
+    }
+
     if (numChannels > 0) {
       const api = this.getApi(numChannels)
       if (api) {
-        // Push input if available
+        // Push input
         if (inputs?.length > 0 && inputs[0].length > 0) {
           const inputLength = inputs[0][0].length
           api.push(inputs[0], inputLength)
         }
 
-        // Pull output if available
-        // With element.playbackRate handling tempo and RubberBand only doing pitch correction,
-        // input/output rates are matched (no time-stretching), so simple pull is sufficient
+        // Prepare outputs: zero-fill, then let API overwrite available portion
         if (outputs?.length > 0 && outputs[0].length > 0) {
+          const chans = outputs[0]
+          for (let c = 0; c < chans.length; c++) chans[c].fill(0)
+          // Always call pull; implementation will copy only what is available
           api.pull(outputs[0])
         }
       }

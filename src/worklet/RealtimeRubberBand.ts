@@ -18,6 +18,8 @@ class RealtimeRubberBand implements RealtimePitchShift {
   private readonly _outputArray: HeapArray
   private _tempo: number = 1
   private _pitch: number = 1
+  private _debugPulls: number = 0
+  private readonly _debugLimit: number = 50
 
   public constructor(
     module: RubberBandModule,
@@ -33,9 +35,15 @@ class RealtimeRubberBand implements RealtimePitchShift {
     this._outputArray = new HeapArray(module, RENDER_QUANTUM_FRAMES, channelCount)
     this._pitch = options?.pitch || 1
     this._tempo = options?.tempo || 1
+
+    // Apply initial settings to kernel
     // Set initial tempo (inverted for RubberBand)
     if (options?.tempo && options.tempo !== 1) {
       this._kernel.setTempo(1 / options.tempo)
+    }
+    // Set initial pitch (direct value for RubberBand)
+    if (options?.pitch && options.pitch !== 1) {
+      this._kernel.setPitch(options.pitch)
     }
   }
 
@@ -87,17 +95,29 @@ class RealtimeRubberBand implements RealtimePitchShift {
   public pull(channels: Float32Array[]): Float32Array[] {
     const channelCount = channels.length
     if (channelCount > 0) {
-      const available = this._kernel.getSamplesAvailable()
       const outputLength = channels[0].length
+
+      // Always clear outputs first to avoid any dry pass-through when the kernel underruns
+      for (let channel = 0; channel < channelCount; ++channel) {
+        channels[channel].fill(0)
+      }
+
+      const available = this._kernel.getSamplesAvailable()
       const toPull = Math.min(available, outputLength)
+
       if (toPull > 0) {
         this._kernel.pull(this._outputArray.getHeapAddress(), toPull)
         for (let channel = 0; channel < channels.length; ++channel) {
+          // Write the processed portion at the start of the output buffer
           channels[channel].set(this._outputArray.getChannelArray(channel).subarray(0, toPull))
         }
       }
-      // No zero-fill fallback - proper priming should ensure we always have samples available
-      // If underrun occurs, it indicates insufficient priming or incorrect buffer management
+
+      if (this._debugPulls < this._debugLimit) {
+        // eslint-disable-next-line no-console
+        console.log('[RubberBand] pull', { available, outputLength, toPull, pitch: this._pitch, tempo: this._tempo })
+        this._debugPulls++
+      }
     }
     return channels
   }

@@ -37,6 +37,27 @@ class HeapArray {
     this.ready = true
   }
 
+  private refreshViewsIfNeeded() {
+    if (!this.ready) return
+    const heap = this.module.HEAPF32
+    if (!heap) return
+    const needsRefresh =
+      this.channelData.length === 0 ||
+      !this.channelData[0] ||
+      this.channelData[0].buffer !== heap.buffer
+    if (needsRefresh) {
+      const channelByteSize = this.length * BYTES_PER_SAMPLE
+      for (let channel = 0; channel < this.channelCount; ++channel) {
+        const startByteOffset = this.dataPtr + channel * channelByteSize
+        const endByteOffset = startByteOffset + channelByteSize
+        this.channelData[channel] = heap.subarray(
+          startByteOffset >> BYTES_PER_UNIT,
+          endByteOffset >> BYTES_PER_UNIT
+        )
+      }
+    }
+  }
+
   public getLength(): number {
     return this.length
   }
@@ -55,6 +76,7 @@ class HeapArray {
   }
 
   public getChannelArray(channel: number): Float32Array {
+    this.refreshViewsIfNeeded()
     if (channel < 0 || channel >= this.channelCount) {
       throw new Error(`Invalid channel index ${channel}, please choose an index from 0 to ${this.channelCount}`)
     }
@@ -62,6 +84,7 @@ class HeapArray {
   }
 
   public getArray(): Float32Array[] {
+    this.refreshViewsIfNeeded()
     return this.channelData
   }
 }
