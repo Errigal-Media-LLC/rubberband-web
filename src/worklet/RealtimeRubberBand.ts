@@ -19,7 +19,7 @@ class RealtimeRubberBand implements RealtimePitchShift {
   private _tempo: number = 1
   private _pitch: number = 1
   private _debugPulls: number = 0
-  private readonly _debugLimit: number = 50
+  private readonly _debugLimit: number = 0 // Disabled for production - set to 50 for debugging
 
   public constructor(
     module: RubberBandModule,
