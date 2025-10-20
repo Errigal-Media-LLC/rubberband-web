@@ -48,7 +48,7 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
       const data = JSON.parse(e.data)
       const event = data[0] as string
       const payload = data[1]
-      logger.log('port.onmessage', event, payload)
+      // Removed spammy port.onmessage log - too frequent
       switch (event) {
         case 'pitch': {
           this.pitch = payload
@@ -79,34 +79,14 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
       onRuntimeInitialized: function() {
         // 'this' refers to the module in Emscripten callbacks
         const module = this as RubberBandModule
-        logger.info('[RubberBand WASM] Runtime initialized, checking embind exports...')
 
         // Check for our actual C++ class bindings
         const hasRequiredExports =
           typeof module.RealtimeRubberBand === 'function' &&
           typeof module.RubberBandAPI === 'function'
 
-        logger.info('[RubberBand WASM] RealtimeRubberBand available:', typeof module.RealtimeRubberBand === 'function')
-        logger.info('[RubberBand WASM] RubberBandAPI available:', typeof module.RubberBandAPI === 'function')
-        logger.info('[RubberBand WASM] _malloc available:', typeof module._malloc === 'function')
-        logger.info('[RubberBand WASM] HEAPF32 available:', !!module.HEAPF32)
-
-        // Dump ALL module properties to find memory
-        logger.info('[RubberBand WASM] ALL module keys:', Object.keys(module).join(', '))
-        logger.info('[RubberBand WASM] module.asm:', !!(module as any).asm)
-        if ((module as any).asm) {
-          logger.info('[RubberBand WASM] asm keys:', Object.keys((module as any).asm).join(', '))
-          logger.info('[RubberBand WASM] asm.memory:', !!((module as any).asm as any).memory)
-          if (((module as any).asm as any).memory) {
-            const memory = ((module as any).asm as any).memory
-            logger.info('[RubberBand WASM] memory type:', memory.constructor.name)
-            logger.info('[RubberBand WASM] memory.buffer:', !!(memory as any).buffer)
-          }
-        }
-
         // If HEAPF32 doesn't exist but we have memory, create heap views manually
         if (!module.HEAPF32 && (module as any).buffer) {
-          logger.info('[RubberBand WASM] Creating heap views manually from buffer...')
           const buffer = (module as any).buffer
           module.HEAP8 = new Int8Array(buffer)
           module.HEAPU8 = new Uint8Array(buffer)
@@ -116,12 +96,11 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
           module.HEAPU32 = new Uint32Array(buffer)
           module.HEAPF32 = new Float32Array(buffer)
           module.HEAPF64 = new Float64Array(buffer)
-          logger.info('[RubberBand WASM] Heap views created, HEAPF32 length:', module.HEAPF32.length)
         }
 
         if (hasRequiredExports) {
           self._module = module
-          logger.info('[RubberBand WASM] ✅ Module ready - embind classes available')
+          // Removed verbose WASM initialization logs for production
         } else {
           logger.error('[RubberBand WASM] ❌ Required embind classes not found!')
           const keys = Object.keys(module)
@@ -130,7 +109,7 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
       }
     } as any)
       .then((module) => {
-        logger.info('[RubberBand WASM] Module promise resolved')
+        // Module loaded successfully
       })
       .catch((err) => {
         logger.error('[RubberBand WASM] Failed to load module:', err)
@@ -144,14 +123,11 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
         this._api.channelCount !== channelCount ||
         this._api.highQuality !== this.highQuality
       ) {
-        logger.info('[RubberBand WASM] Creating RealtimeRubberBand API...')
-        logger.info('[RubberBand WASM] Module _malloc type:', typeof this._module._malloc)
         this._api = new RealtimeRubberBand(this._module, sampleRate, channelCount, {
           highQuality: this.highQuality,
           pitch: this.pitch,
           tempo: this.tempo
         })
-        logger.info(`RubberBand engine version ${this._api.version}`)
 
         // Emit processorReady event so main thread can re-apply current audio parameters
         // This is critical after seek operations that trigger processor recreation
@@ -160,7 +136,6 @@ class RealtimePitchShiftProcessor extends AudioWorkletProcessor {
           tempo: this.tempo,
           timestamp: currentTime
         }]))
-        logger.info('[RubberBand] 📢 Emitted processorReady event')
       }
     } else {
       logger.warn('[RubberBand WASM] Module not yet loaded, skipping audio processing')
