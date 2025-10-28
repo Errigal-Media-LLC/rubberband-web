@@ -18,8 +18,10 @@ class RealtimeRubberBand implements RealtimePitchShift {
   private readonly _outputArray: HeapArray
   private _tempo: number = 1
   private _pitch: number = 1
+  private _hasProcessedAudio: boolean = false
   private _debugPulls: number = 0
-  private readonly _debugLimit: number = 0 // Disabled for production - set to 50 for debugging
+  private _debugPitchSetters: number = 0
+  private readonly _debugLimit: number = 0 // Disabled for production
 
   public constructor(
     module: RubberBandModule,
@@ -45,6 +47,13 @@ class RealtimeRubberBand implements RealtimePitchShift {
     if (options?.pitch && options.pitch !== 1) {
       this._kernel.setPitch(options.pitch)
     }
+
+    // Prime the FFT buffers with silence to avoid harsh artifacts
+    // when pitch is shifted UP before any audio has flowed through.
+    // Only needed for pitch > 1.0 (upward transposition); downward shift doesn't exhibit the artifact.
+    if (options?.pitch && options.pitch > 1.0) {
+      this.primeBuffers()
+    }
   }
 
   get timeRatio(): number {
@@ -60,8 +69,16 @@ class RealtimeRubberBand implements RealtimePitchShift {
   }
 
   public set pitchScale(pitch: number) {
+    const previousPitch = this._pitch
     this._pitch = pitch
-    this._kernel.setPitch(pitch)
+    // Prime buffers if this is the first time we're setting an UPWARD pitch shift
+    // and we haven't processed any audio yet. Only needed for pitch > 1.0.
+    if (!this._hasProcessedAudio && previousPitch <= 1.0 && pitch > 1.0) {
+      this._kernel.setPitch(pitch)
+      this.primeBuffers()
+    } else {
+      this._kernel.setPitch(pitch)
+    }
   }
 
   public get samplesAvailable(): number {
@@ -71,6 +88,17 @@ class RealtimeRubberBand implements RealtimePitchShift {
   public push(channels: Float32Array[], numSamples?: number) {
     const channelCount = channels.length
     if (channelCount > 0) {
+      // Check if this is real audio (not silence)
+      // We check the first channel's first few samples to detect non-silence
+      if (!this._hasProcessedAudio && channels[0]) {
+        for (let i = 0; i < Math.min(10, channels[0].length); i++) {
+          if (channels[0][i] !== 0) {
+            this._hasProcessedAudio = true
+            break
+          }
+        }
+      }
+
       for (let channel = 0; channel < channelCount; ++channel) {
         this._inputArray.getChannelArray(channel).set(channels[channel])
       }
@@ -112,12 +140,6 @@ class RealtimeRubberBand implements RealtimePitchShift {
           channels[channel].set(this._outputArray.getChannelArray(channel).subarray(0, toPull))
         }
       }
-
-      if (this._debugPulls < this._debugLimit) {
-        // eslint-disable-next-line no-console
-        console.log('[RubberBand] pull', { available, outputLength, toPull, pitch: this._pitch, tempo: this._tempo })
-        this._debugPulls++
-      }
     }
     return channels
   }
@@ -132,6 +154,40 @@ class RealtimeRubberBand implements RealtimePitchShift {
 
   public get highQuality(): boolean {
     return this._highQuality
+  }
+
+  /**
+   * Prime the internal FFT buffers with silence to avoid artifacts
+   * when pitch shifting is applied before any audio has been processed.
+   * This solves the "harsh beep" issue when pitching up on first playback.
+   */
+  private primeBuffers(): void {
+    // Store the current flag state to restore after priming
+    const wasProcessed = this._hasProcessedAudio
+
+    // Push enough silent frames to prime the FFT buffers
+    // RubberBand needs its internal FFT windows fully populated before producing output.
+    // With typical FFT sizes of 2048-4096 samples, we need substantial priming.
+    // Push 32 passes (4096 samples @ 44.1kHz = ~93ms) to ensure buffers are stabilized
+    const primingPasses = 32
+
+    for (let i = 0; i < primingPasses; i++) {
+      // Push silence directly to kernel to avoid triggering hasProcessedAudio
+      for (let channel = 0; channel < this._channelCount; ++channel) {
+        this._inputArray.getChannelArray(channel).fill(0)
+      }
+      this._kernel.push(this._inputArray.getHeapAddress(), RENDER_QUANTUM_FRAMES)
+
+      // Pull and discard any output to advance the internal state
+      const discardOutput: Float32Array[] = []
+      for (let channel = 0; channel < this._channelCount; ++channel) {
+        discardOutput.push(new Float32Array(RENDER_QUANTUM_FRAMES))
+      }
+      this.pull(discardOutput)
+    }
+
+    // Restore the flag state
+    this._hasProcessedAudio = wasProcessed
   }
 }
 
